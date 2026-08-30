@@ -109,7 +109,6 @@ function App() {
   // Station identity lives on the device (u-boot env), not in the browser —
   // the Operator page reflects state/operator/* instead of localStorage.
   const op = { name: d.opName || "", callsign: d.opCallsign || "", locator: d.opLocator || "" };
-  const needsOperator = d.mqtt && !op.callsign;
   // MIDI handling is scoped per-page for now (starting with SpectrumPage),
   // not run globally — see midi.jsx. The MIDI status page calls the hook
   // itself so it still works as a standalone diagnostic screen.
@@ -136,7 +135,6 @@ function App() {
   }, [t.accent, t.accent2, t.density]);
 
   const page = () => {
-    if (needsOperator) return <Operator d={d} operator={op} />;
     switch (route) {
       case "dashboard": return <Dashboard d={d} ver={ver} />;
       case "spectrum": return <SpectrumPage d={d} />;
