@@ -1,0 +1,31 @@
+iio: adc: cf_axi_adc_core: don't swallow debugfs reg_access errors
+
+axiadc_reg_access() computes `ret` from either the converter's
+reg_access() callback (SPI-side register access, taken when the
+DEBUGFS_DRA_PCORE_REG_MAGIC bit is clear) or the direct PCore MMIO
+path (magic bit set), but then unconditionally does `return 0`
+instead of `return ret`. Any error from the converter path
+(-ENODEV when conv->reg_access is unset, -EINVAL from an IS_ERR
+converter, or a converter-specific error) is discarded, and the IIO
+debugfs core (industrialio-core.c: iio_debugfs_read_reg/write_reg)
+treats the access as successful. On read, this surfaces as a
+silent 0x0 instead of an error, which is indistinguishable from a
+real all-zero register value on /sys/kernel/debug/iio/iio:deviceX/
+direct_reg_access.
+
+Confirmed present upstream at HEAD (analogdevicesinc/linux main,
+same file, same bug) as of this writing -- no upstream fix exists
+to cherry-pick, so this is authored directly against our pinned
+kernel commit.
+
+--- a/drivers/iio/adc/cf_axi_adc_core.c
++++ b/drivers/iio/adc/cf_axi_adc_core.c
+@@ -256,7 +256,7 @@ static int axiadc_reg_access(struct iio_dev *indio_dev,
+ 	}
+ 	mutex_unlock(&conv->lock);
+
+-	return 0;
++	return ret;
+ }
+
+ static int axiadc_decimation_set(struct axiadc_state *st,
