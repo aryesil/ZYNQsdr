@@ -1,6 +1,7 @@
 # TX complex 8-bit (cs8) mode for the LibreSDR (Z7020) target
 
-Status: design notes only, nothing built yet. Written after reading `tezuka_fw`
+Status: implemented and verified on a LibreSDR (see `hdl/cs8-tx/`). The rest of this
+note is the original design analysis, kept as written. It was written after reading `tezuka_fw`
 (main, 62183a3) and the `F5OEO/maia-sdr` fork (branch `refactor`, 9c1cd64), which
 holds the FPGA project that Tezuka's bitstream is built from.
 
