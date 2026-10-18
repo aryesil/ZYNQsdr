@@ -19,7 +19,7 @@
 * **Seamless Input Switching:** Easily switch between RX1/RX2 and TX1/TX2.
 * **Extended Bandwidth:** Complex 8-bit mode unlocks stable streaming up to **14 MHz over USB** and **45 MHz over GbE network**.
 * **Risk-Free Booting:** Built-in **SD Card boot support** for effortless updates with zero risk of bricking your flash memory.
-* **Integrated Apps:** Includes Maia-SDR transparently, fast sweep, and MQTT status publishing and more.
+* **Integrated Apps:** MQTT status publishing, fast sweep and more. The GNSS variant (`./build.sh libre_gnss`) ships without Maia-SDR and DVB-S2; it adds the `gnssctl` helper for the gnss_synth PL block (see `board/tezuka/libre/overlay_gnss`).
 * **Remote Access:** Built-in WireGuard VPN, configured from the Dashboard by pasting a `wg-quick` config — no SSH/CLI needed.
 * **Signal Classifier (experimental):** Onboard PSD spectral-shape matching identifies signal types live, overlaid right on the Dashboard's spectrum view. Work in progress — not yet validated on real hardware.
 
