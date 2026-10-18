@@ -1,0 +1,126 @@
+#!/bin/sh
+# gnssctl - control/inspect the gnss_synth PL block (gs_wrap) from the shell.
+# BusyBox ash compatible; uses busybox devmem on /dev/mem (no awk/C needed).
+#
+#   gnssctl id | status | enable | disable | cmdmode on|off | soft_reset | clear
+#
+# gs_wrap sits behind AXI-Lite at 0x43C10000 (4 KB). The base is read from the
+# UIO device named "gnss-synth" when present, else the fixed default.
+# Overrides (also used by the host side tests): GNSS_BASE, GNSS_DEVMEM.
+#
+# Register map (see fpga/rtl/gs_wrap.v in the gps-sim repo):
+#   0x00 ID 0x47530001 | 0x04 CTRL b0 enable b1 cmd_mode b2 soft_reset b3 clear
+#   0x08 STATUS | 0x10/0x14 PLAY_IDX LO/HI | 0x18 UNDERRUNS | 0x1C DROPPED_LATE
+#   0x20 CLIPPED | 0x24 CHIP_LATE | 0x28 BAD_WORDS | 0x2C SAMPLE_FIFO_UNDERFLOWS
+#   0x30 SAMPLE_FIFO_LEVEL | 0x34 CMD_FIFO_OVERRUNS
+export LC_ALL=C
+MEM=${GNSS_DEVMEM:-devmem}
+ID_EXPECT=$((0x47530001))
+
+die() { echo "gnssctl: $*" >&2; exit 1; }
+
+find_base() {
+    if [ -n "$GNSS_BASE" ]; then echo "$((GNSS_BASE))"; return; fi
+    for d in /sys/class/uio/uio*; do
+        [ -r "$d/name" ] || continue
+        [ "$(cat "$d/name" 2>/dev/null)" = "gnss-synth" ] || continue
+        a=$(cat "$d/maps/map0/addr" 2>/dev/null) && [ -n "$a" ] && { echo "$((a))"; return; }
+    done
+    echo $((0x43c10000))
+}
+BASE=$(find_base)
+
+rd() {  # rd <offset> -> decimal value
+    raw=$("$MEM" "$((BASE + $1))" 32 2>/dev/null) || die "devmem read failed at offset $1 (is the gnss bitstream loaded?)"
+    case "$raw" in
+        0x*|0X*) d=${raw#??}; case "$d" in ''|*[!0-9a-fA-F]*) die "bad devmem output '$raw'";; esac;;
+        '') die "empty devmem output";;
+        *[!0-9]*) die "bad devmem output '$raw'";;
+    esac
+    echo "$((raw))"
+}
+wr() { "$MEM" "$((BASE + $1))" 32 "$2" >/dev/null 2>&1 || die "devmem write failed at offset $1"; }
+hex() { printf '0x%08x' "$1"; }
+bit() { if [ $(( ($1 >> $2) & 1 )) -eq 1 ]; then echo "$3"; else echo "$4"; fi; }
+
+check_id() {
+    id=$(rd 0)
+    [ "$id" -eq "$ID_EXPECT" ] || die "bad ID $(hex "$id") at $(hex "$BASE") (expected $(hex "$ID_EXPECT")): gnss bitstream not loaded?"
+}
+# CTRL read-modify-write: only b0/b1 are state (b2 reads busy, b3 is a pulse).
+ctrl_state() { echo $(( $(rd 4) & 3 )); }
+set_ctrl() { wr 4 "$1"; }
+
+play_idx() {  # coherent 64-bit read: HI, LO, HI, retry on rollover
+    n=0
+    while [ $n -lt 5 ]; do
+        h1=$(rd 20); l=$(rd 16); h2=$(rd 20)
+        [ "$h1" -eq "$h2" ] && break
+        n=$((n + 1))
+    done
+    printf '0x%08x%08x (%u lo, %u hi)' "$h2" "$l" "$l" "$h2"
+}
+
+cmd_status() {
+    check_id
+    c=$(rd 4); s=$(rd 8)
+    echo "gs_wrap @ $(hex "$BASE")  ID $(hex "$(rd 0)")"
+    echo "CTRL   $(hex "$c")  enable=$(( c & 1 )) cmd_mode=$(( (c >> 1) & 1 )) soft_reset_busy=$(( (c >> 2) & 1 ))"
+    echo "STATUS $(hex "$s")"
+    echo "  running           : $(bit "$s" 0 yes no)"
+    echo "  cmd_fifo_ok       : $(bit "$s" 1 yes 'no (almost full)')"
+    echo "  cmd_mode (divclk) : $(bit "$s" 2 on off)"
+    echo "  playing           : $(bit "$s" 3 yes no)"
+    echo "  cmd_fifo_empty    : $(bit "$s" 4 yes no)"
+    echo "  sample_fifo_empty : $(bit "$s" 5 yes no)"
+    echo "  cmd_fifo_full_seen: $(bit "$s" 6 yes no)"
+    echo "  queued_cmd_words  : $(( (s >> 16) & 0xffff ))"
+    echo "PLAY_IDX             $(play_idx)"
+    echo "UNDERRUNS            $(rd 24)"
+    echo "DROPPED_LATE         $(rd 28)"
+    echo "CLIPPED              $(rd 32)"
+    echo "CHIP_LATE            $(rd 36)"
+    echo "BAD_WORDS            $(rd 40)"
+    echo "SAMPLE_FIFO_UNDERFLOWS $(rd 44)"
+    echo "SAMPLE_FIFO_LEVEL    $(rd 48)"
+    echo "CMD_FIFO_OVERRUNS    $(rd 52)"
+}
+
+usage() {
+    echo "Usage: gnssctl {id|status|enable|disable|cmdmode on|off|soft_reset|clear}" >&2
+    exit 2
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    id)
+        id=$(rd 0)
+        echo "$(hex "$id")"
+        [ "$id" -eq "$ID_EXPECT" ] || die "unexpected ID (expected $(hex "$ID_EXPECT"))"
+        ;;
+    status) cmd_status ;;
+    enable)  check_id; st=$(ctrl_state); set_ctrl $(( st | 1 )); echo "enabled (CTRL=$(hex $(( st | 1 ))))" ;;
+    disable) check_id; st=$(ctrl_state); set_ctrl $(( st & 2 )); echo "disabled (CTRL=$(hex $(( st & 2 ))))" ;;
+    cmdmode)
+        [ $# -eq 2 ] || usage
+        check_id; st=$(ctrl_state)
+        case "$2" in
+            on|1)  v=$(( st | 2 )) ;;
+            off|0) v=$(( st & 1 )) ;;
+            *) usage ;;
+        esac
+        set_ctrl "$v"; echo "cmd_mode $2 (CTRL=$(hex "$v"))"
+        ;;
+    soft_reset)
+        # Flushes both FIFOs and gs_top; enable/cmd_mode keep their value.
+        check_id; st=$(ctrl_state); set_ctrl $(( st | 4 ))
+        n=0
+        while [ $(( $(rd 4) & 4 )) -ne 0 ]; do
+            n=$((n + 1)); [ $n -gt 100 ] && die "soft reset still busy after 1 s"
+            sleep 0.01 2>/dev/null || sleep 1
+        done
+        echo "soft reset done"
+        ;;
+    clear) check_id; st=$(ctrl_state); set_ctrl $(( st | 8 )); echo "counters cleared" ;;
+    *) usage ;;
+esac

@@ -1,0 +1,22 @@
+#!/bin/sh
+# Serves /root (index.html = Tezuka dashboard) on port 80 with BusyBox httpd.
+# Replaces maia-httpd, which is not part of the GNSS image. The dashboard talks
+# to mosquitto's websocket listener (port 9001) for live data.
+case "$1" in
+  start)
+	printf "Starting dashboard httpd: "
+	start-stop-daemon -S -b -q -m -p /var/run/dashboard-httpd.pid -x /usr/sbin/httpd -- -f -h /root -p 80 && echo OK || echo FAIL
+	;;
+  stop)
+	printf "Stopping dashboard httpd: "
+	start-stop-daemon -K -q -p /var/run/dashboard-httpd.pid && echo OK || echo FAIL
+	;;
+  restart|reload)
+	$0 stop
+	$0 start
+	;;
+  *)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+exit $?
