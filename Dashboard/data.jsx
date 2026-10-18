@@ -5,8 +5,6 @@ const { useState: useStateD, useEffect: useEffectD, useRef: useRefD, useCallback
 
 // Set to the device IP for local development; leave null to use window.location.hostname (on-device)
 const MQTT_DEV_HOST = '10.0.0.58';
-// Exposed for use in other pages (e.g. spectrum WebSocket)
-window._tezukaDevHost = MQTT_DEV_HOST || window.location.hostname;
 
 const HIST = 60;
 
@@ -51,17 +49,12 @@ function applyMqtt(prev, path, raw) {
     case 'tx/active':           return { ...prev, txActive: raw === '0' };
     case 'rx/rfinput':          return { ...prev, rxRfinput: parseInt(raw) };
     case 'tx/rfoutput':         return { ...prev, txRfoutput: parseInt(raw) };
-    case 'rx/loopback':         return { ...prev, loopback: parseInt(raw) };
-    case 'rx/fir_enable':       return { ...prev, rxFirEnable: raw === '1' };
     case 'rx/overload':         return { ...prev, rxOverload: raw === '1' };
     case 'tx/overload':         return { ...prev, txOverload: raw === '1' };
     case 'rx/underflow':        return { ...prev, rxUnderflow: raw === '1' };
     case 'tx/underflow':        return { ...prev, txUnderflow: raw === '1' };
     case 'rx/buffer_size':      return { ...prev, rxBufferSize: parseInt(raw) };
     case 'tx/buffer_size':      return { ...prev, txBufferSize: parseInt(raw) };
-    case 'rx/sweep/activate':   return { ...prev, sweepActive: raw === '1' };
-    case 'rx/sweep/frequency':  return { ...prev, sweepFreq: parseFloat(raw) };
-    case 'rx/span':             return { ...prev, span: parseFloat(raw) };
     case 'main/serial':         return { ...prev, serial: raw };
     case 'main/hw_model':       return { ...prev, hwModel: raw };
     case 'main/fw_version':     return { ...prev, fwVersion: raw };
@@ -72,13 +65,6 @@ function applyMqtt(prev, path, raw) {
     case 'main/rx_path_rates':     return { ...prev, rxPathRates: raw };
     case 'main/tx_path_rates':     return { ...prev, txPathRates: raw };
     case 'main/firmware_version':  return { ...prev, firmwareVersion: raw };
-    case 'main/fir_config': {
-      const rx = raw.match(/Rx:\s*\d+,(\d+)/);
-      const tx = raw.match(/Tx:\s*\d+,(\d+)/);
-      return { ...prev, firConfig: raw,
-        rxFirDecim:  rx ? parseInt(rx[1]) : 0,
-        txFirInterp: tx ? parseInt(tx[1]) : 0 };
-    }
     case 'main/linux':             return { ...prev, linuxVersion: raw };
     case 'main/uboot':             return { ...prev, ubootVersion: raw };
     case 'main/buildroot':         return { ...prev, buildrootVersion: raw };
@@ -100,8 +86,6 @@ function applyMqtt(prev, path, raw) {
     case 'usb/rx_rate':      return { ...prev, usbRxRate: parseInt(raw) };
     case 'usb/tx_rate':      return { ...prev, usbTxRate: parseInt(raw) };
     case 'system/2r2t':          return { ...prev, sys2r2t: raw === '1' };
-    case 'system/iqtape':        return { ...prev, iqtape: raw };
-    case 'system/siggen':        return { ...prev, siggen: raw };
     case 'system/overclock':     return { ...prev, overclock: raw };
     case 'system/overclock_cap': try { return { ...prev, overclockCap: JSON.parse(raw) }; } catch { return prev; }
     case 'system/log':                  return { ...prev, systemLog: [...prev.systemLog, raw] };
@@ -118,26 +102,6 @@ function applyMqtt(prev, path, raw) {
     // field from an incoming MQTT payload.
     case 'vpn/enabled':                return { ...prev, vpnEnabled: raw };
     case 'vpn/status': try { return { ...prev, vpnStatus: JSON.parse(raw) }; } catch { return prev; }
-    case 'classifier/enabled':         return { ...prev, classifierEnabled: raw };
-    case 'classifier/label':           return { ...prev, classifierLabel: raw };
-    case 'classifier/confidence':      return { ...prev, classifierConfidence: raw };
-    case 'classifier/freq_offset':     return { ...prev, classifierFreqOffset: raw };
-    case 'classifier/bandwidth_bins':  return { ...prev, classifierBandwidthBins: raw };
-    case 'classifier/frame_bins':      return { ...prev, classifierFrameBins: raw };
-    case 'classifier/template_id':     return { ...prev, classifierTemplateId: raw };
-    // Per-frame scalar features (experimental) — published every cycle
-    // regardless of match outcome, so these populate even while
-    // classifierLabel is "unknown". See extract_frame_features() in
-    // app/classifier/classifier.c.
-    case 'classifier/feature_bandwidth_bins': return { ...prev, classifierFeatureBandwidthBins: raw };
-    case 'classifier/feature_papr_db':        return { ...prev, classifierFeaturePaprDb: raw };
-    case 'classifier/feature_flatness':       return { ...prev, classifierFeatureFlatness: raw };
-    case 'classifier/feature_peak_count':     return { ...prev, classifierFeaturePeakCount: raw };
-    // Cross-cycle features (experimental) — "n/a" (a literal string, not a
-    // number) until the daemon's rolling history has enough samples; see
-    // history_compute() in app/classifier/classifier.c.
-    case 'classifier/feature_drift_bins_s':     return { ...prev, classifierFeatureDriftBinsS: raw };
-    case 'classifier/feature_duty_cycle_pct':   return { ...prev, classifierFeatureDutyCyclePct: raw };
     case 'operator/name':               return { ...prev, opName: raw };
     case 'operator/callsign':           return { ...prev, opCallsign: raw };
     case 'operator/locator':            return { ...prev, opLocator: raw };
@@ -168,12 +132,11 @@ function useLiveData(running = true) {
   const zeros = Array(HIST).fill(0);
   const [d, setD] = useStateD(() => ({
     cpu: 0, mem: 0, temp: 0, fpgaTemp: 0,
-    rfLevel: 0, lock: false, ber: 0,
-    tsBitrate: 0, rxRate: 0, txRate: 0,
+    rfLevel: 0,
+    rxRate: 0, txRate: 0,
     cpuH: zeros, memH: zeros, tempH: zeros, fpgaH: zeros,
-    tsH: zeros, rxH: zeros, txH: zeros, rfH: zeros, clkrefCorrH: zeros,
-    uptime: 0, mqtt: false, datv: {},
-    lm: {},   // dt/zynqrx/<key> from zynqrx (the DVB-S2 receiver), see webtioune.jsx
+    rxH: zeros, txH: zeros, rfH: zeros, clkrefCorrH: zeros,
+    uptime: 0, mqtt: false,
     rxFreq: null, txFreq: null,
     rxSampling: null, txSampling: null,
     rxBandwidth: null, txBandwidth: null,
@@ -182,8 +145,7 @@ function useLiveData(running = true) {
     rxGainMode: null,
     rxAnt: null, txAnt: null,
     rxActive: null, txActive: null,
-    rxRfinput: null, rxFirEnable: null, loopback: null, rxOverload: false, txOverload: false, rxUnderflow: false, txUnderflow: false, rxBufferSize: null, txBufferSize: null,
-    sweepActive: false, sweepFreq: null, span: null,
+    rxRfinput: null, rxOverload: false, txOverload: false, rxUnderflow: false, txUnderflow: false, rxBufferSize: null, txBufferSize: null,
     serial: null, hwModel: null, fwVersion: null, freqCorrection: null, ppbCorrection: null,
     caps: {}, net: {}, gpio: {}, envVars: {}, envCount: null, systemLog: [], debugIio: {},
     overclock: null, overclockCap: [],
@@ -202,36 +164,12 @@ function useLiveData(running = true) {
     const client = new Paho.MQTT.Client(host, useSSL ? 9002 : 9001, '/mqtt', clientId);
     mqttRef.current = client;
     let offlineTimer = null;
-    // zynqrx publishes ~25 dt/zynqrx/* topics every second, most unchanged: collect them and
-    // update once per 500 ms, and only when a value differs, so the whole app does not re-render for each.
-    const lmBuf = {};
-    let lmTimer = null;
-    const lmFlush = () => {
-      lmTimer = null;
-      const buf = { ...lmBuf };
-      for (const k in lmBuf) delete lmBuf[k];
-      setD((p) => {
-        let changed = false;
-        const lm = { ...p.lm };
-        for (const k in buf) if (lm[k] !== buf[k]) { lm[k] = buf[k]; changed = true; }
-        return changed ? { ...p, lm } : p;
-      });
-    };
-
     client.onMessageArrived = (msg) => {
       let payload;
       try { payload = msg.payloadString; } catch (_) { return; }
       const dest = msg.destinationName;
-      if (dest.startsWith('dt/zynqrx/')) {
-        lmBuf[dest.slice('dt/zynqrx/'.length)] = payload;
-        if (!lmTimer) lmTimer = setTimeout(lmFlush, 500);
-      } else if (dest.startsWith('dt/pluto/')) {
-        const subPath = dest.split('/').slice(3).join('/');
-        setD((p) => ({ ...p, datv: { ...p.datv, [subPath]: payload } }));
-      } else {
-        const path = dest.replace(/^state\//, '');
-        setD((p) => applyMqtt(p, path, payload));
-      }
+      const path = dest.replace(/^state\//, '');
+      setD((p) => applyMqtt(p, path, payload));
     };
 
     client.onConnectionLost = () => {
@@ -243,8 +181,6 @@ function useLiveData(running = true) {
       onSuccess: () => {
         clearTimeout(offlineTimer);
         client.subscribe('state/#');
-        client.subscribe('dt/pluto/#');
-        client.subscribe('dt/zynqrx/#');
         setD((p) => ({ ...p, mqtt: true, mqttHost: `${host}:9001` }));
       },
       onFailure: () => {
@@ -256,7 +192,7 @@ function useLiveData(running = true) {
       useSSL,
     });
 
-    return () => { clearTimeout(offlineTimer); clearTimeout(lmTimer); try { client.disconnect(); } catch (_) {} mqttRef.current = null; };
+    return () => { clearTimeout(offlineTimer); try { client.disconnect(); } catch (_) {} mqttRef.current = null; };
   }, []);
 
   const publish = useCBD((path, value) => {

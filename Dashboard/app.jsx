@@ -13,11 +13,8 @@ const VER = {
 };
 
 const NAV = [
-  { group: null, items: [["dashboard", "Dashboard", "dashboard"]] },
-  { group: "RF", items: [["spectrum", "Spectrum", "spectrum"], ["radioastro", "Radio Astronomy", "target"], ["classifier", "Signal Classifier", "search"], ["arch", "Architecture", "chip"], ["maiasdr", "Maia SDR", "wave"]] },
-  { group: "Application", items: [["datv", "DATV Controller", "datv", [["obs", "OBS Encoder", "monitor"]]], ["webtioune", "Webtioune", "play", [["analysis", "Analysis", "analysis"]]], ["transverter", "Transverter", "transverter"], ["iqtape", "IQ Tape", "tape"], ["siggen", "Signal generator", "wave"], ["rftest", "RF Test Frequencies", "rf"], ["radio", "Radio", "headphone"]] },
-  { group: "System", items: [["versions", "Versions", "versions"], ["network", "Network", "network"], ["diagnostic", "Diagnostic", "pulse"], ["calibrate", "Calibrate", "target", [["kalibrate", "Kalibrate", "search"]]], ["performance", "Performance", "chip"], ["gpio", "GPIO", "circuit"], ["persistent", "Persistent", "save"], ["gps", "GPS", "mappin"], ["clkref", "Reference Clock", "clock"], ["midi", "MIDI controller", "sliders"], ["reboot", "Reboot", "power"]] },
-  { group: "Documentation", items: [["docs", "Documentation", "book"]] },
+  { group: null, items: [["dashboard", "Dashboard", "dashboard"], ["arch", "Architecture", "chip"]] },
+  { group: "System", items: [["versions", "Versions", "versions"], ["network", "Network", "network"], ["diagnostic", "Diagnostic", "pulse"], ["calibrate", "Calibrate", "target", [["kalibrate", "Kalibrate", "search"]]], ["performance", "Performance", "chip"], ["gpio", "GPIO", "circuit"], ["persistent", "Persistent", "save"], ["gps", "GPS", "mappin"], ["clkref", "Reference Clock", "clock"], ["reboot", "Reboot", "power"]] },
 ];
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
@@ -34,10 +31,6 @@ function Sidebar({ route, setRoute, collapsed, labels, operator }) {
       <a className="brand" href="https://github.com/F5OEO/tezuka_fw" target="_blank" rel="noopener noreferrer">
         <div className="brand-mark"><Icon name="wave" size={20} /></div>
         {!collapsed && <div className="brand-text">Tezuka<span>SDR control · by F5OEO</span></div>}
-      </a>
-      <a className="sb-donate" href="https://www.paypal.com/paypalme/f5oeo" target="_blank" rel="noopener noreferrer" title="Support this project via PayPal">
-        <Icon name="heart" size={16} />
-        {!collapsed && <span>Donate</span>}
       </a>
       <nav className="nav">
         {NAV.map((sec, i) => (
@@ -83,13 +76,13 @@ function Sidebar({ route, setRoute, collapsed, labels, operator }) {
   );
 }
 
-const TITLES = { dashboard: "Dashboard", spectrum: "Spectrum", radioastro: "Radio Astronomy", classifier: "Signal Classifier", datv: "DATV Controller", obs: "OBS Encoder", webtioune: "Webtioune", rftest: "RF Test Frequencies", maiasdr: "Maia SDR", transverter: "Transverter", iqtape: "IQ Tape", siggen: "Signal generator", radio: "Radio", calibrate: "Calibrate", analysis: "Analysis", arch: "Architecture", versions: "Versions & system", network: "Network", diagnostic: "Diagnostic", kalibrate: "Kalibrate from RF", performance: "Performance", gpio: "GPIO", persistent: "Persistent storage", gps: "GPS", clkref: "Reference Clock", midi: "MIDI controller", reboot: "Reboot", operator: "Operator", docs: "Documentation" };
+const TITLES = { dashboard: "Dashboard", arch: "Architecture", calibrate: "Calibrate", versions: "Versions & system", network: "Network", diagnostic: "Diagnostic", kalibrate: "Kalibrate from RF", performance: "Performance", gpio: "GPIO", persistent: "Persistent storage", gps: "GPS", clkref: "Reference Clock", reboot: "Reboot", operator: "Operator" };
 
 function Topbar({ onMenu, route, mqtt, ver }) {
   return (
     <header className="topbar">
       <button className="icon-btn" onClick={onMenu}><Icon name="menu" size={20} /></button>
-      <div className="crumb"><span className="dim">Tezuka</span><span className="sep">/</span><b>{TITLES[route]}</b></div>
+      <div className="crumb"><span className="dim">Tezuka</span><span className="sep">/</span><b>{TITLES[route] || TITLES.dashboard}</b></div>
       <div className="topbar-title">Tezuka<span className="topbar-sub">{ver.model}</span></div>
       <div className="top-actions">
         <span className={`mqtt-chip ${mqtt ? "up" : ""}`}><i />MQTT</span>
@@ -109,9 +102,6 @@ function App() {
   // Station identity lives on the device (u-boot env), not in the browser —
   // the Operator page reflects state/operator/* instead of localStorage.
   const op = { name: d.opName || "", callsign: d.opCallsign || "", locator: d.opLocator || "" };
-  // MIDI handling is scoped per-page for now (starting with SpectrumPage),
-  // not run globally — see midi.jsx. The MIDI status page calls the hook
-  // itself so it still works as a standalone diagnostic screen.
 
   // Merge live MQTT version fields over the build-time defaults
   const ver = {
@@ -137,20 +127,8 @@ function App() {
   const page = () => {
     switch (route) {
       case "dashboard": return <Dashboard d={d} ver={ver} />;
-      case "spectrum": return <SpectrumPage d={d} />;
-      case "radioastro": return <RadioAstronomyPage d={d} />;
-      case "classifier": return <ClassifierPage d={d} />;
-      case "datv": return <DATV d={d} callsign={op.callsign} />;
-      case "transverter": return <Transverter d={d} />;
-      case "iqtape": return <IQTape d={d} />;
-      case "siggen": return <SigGen d={d} callsign={op.callsign} />;
-      case "rftest": return <RfTest d={d} />;
-      case "calibrate": return <Calibrate d={d} navigate={setRoute} />;
-      case "analysis": return <Analysis d={d} />;
-      case "obs": return <DATVObs d={d} callsign={op.callsign} />;
-      case "webtioune": return <Webtioune d={d} />;
       case "arch": return <Architecture d={d} />;
-      case "maiasdr": return <MaiaSdr />;
+      case "calibrate": return <Calibrate d={d} navigate={setRoute} />;
       case "versions": return <Versions ver={ver} />;
       case "network": return <Network d={d} />;
       case "diagnostic": return <Diagnostic d={d} />;
@@ -160,11 +138,8 @@ function App() {
       case "persistent": return <Persistent d={d} />;
       case "gps": return <GpsPage d={d} />;
       case "clkref": return <ClockRef d={d} />;
-      case "midi": return <MidiPage d={d} />;
       case "reboot": return <Reboot d={d} ver={ver} />;
       case "operator": return <Operator d={d} operator={op} />;
-      case "radio": return <RadioPage d={d} />;
-      case "docs": return <Documentation />;
       default: return <Dashboard d={d} ver={ver} />;
     }
   };

@@ -4,8 +4,8 @@ const { useState: useS3, useEffect: useE3 } = React;
 const ARCH_GAIN_MODE = { manual: 'Manual', slow_attack: 'Slow AGC', fast_attack: 'Fast AGC', hybrid: 'Slow AGC' };
 const ARCH_GAIN_MODE_INV = { Manual: 'manual', 'Slow AGC': 'slow_attack', 'Fast AGC': 'fast_attack' };
 
-const GCOL = { rx: "var(--accent)", tx: "var(--c-pink)", lo: "var(--c-blue)", sys: "var(--dim)", port: "var(--ok)", fpga: "var(--c-purple)" };
-const GNAME = { rx: "Receive chain", tx: "Transmit chain", lo: "Synthesizer", sys: "System", port: "RF port", fpga: "Processing system", overview: "Device" };
+const GCOL = { rx: "var(--accent)", tx: "var(--c-pink)", lo: "var(--c-blue)", sys: "var(--dim)", port: "var(--ok)", fpga: "var(--c-purple)", ps: "var(--accent-2)" };
+const GNAME = { rx: "Receive chain", tx: "Transmit chain", lo: "Synthesizer", sys: "System", port: "RF port", fpga: "Programmable logic", ps: "Processing system", overview: "Device" };
 
 // geometry: [x, y, w, h, group, label, sub]
 const BLK = {
@@ -27,7 +27,16 @@ const BLK = {
   bbpll: [408, 250, 84, 44, "sys", "BB PLL", null],
   ctrl: [504, 250, 84, 44, "sys", "SPI / ENSM", null],
   ddi: [606, 210, 72, 120, "sys", "Data Port", null],
-  fpga: [714, 190, 110, 160, "fpga", "Zynq PL", "Tezuka HDL"],
+  axi: [714, 170, 110, 200, "fpga", "axi_ad9361", "AD9361 interface"],
+  cs12: [860, 60, 110, 56, "fpga", "cs12 pack", "RX packing"],
+  adcdma: [1000, 60, 100, 56, "fpga", "ADC DMA", null],
+  iqxo: [860, 150, 110, 56, "fpga", "iq_xo_corrector", null],
+  vctcxo: [860, 230, 110, 56, "fpga", "vctcxo_lock", "ref. PLL"],
+  sfifo: [860, 330, 110, 56, "fpga", "Sample FIFO", null],
+  synth: [860, 410, 110, 56, "fpga", "GNSS synth", "engine"],
+  dacdma: [1000, 330, 100, 56, "fpga", "DAC DMA", "IQ stream TX"],
+  cmddma: [1000, 410, 100, 56, "fpga", "Cmd DMA", "synth commands"],
+  ps: [1000, 170, 100, 130, "ps", "PS / ARM", "Linux"],
 };
 
 const CONN = [
@@ -38,6 +47,10 @@ const CONN = [
   ["lo", "M450,250 V136"], ["lo", "M450,294 V400"],
   ["sys", "M588,272 H606"],
   ["data", "M678,270 H714"],
+  ["data", "M824,190 H842 V88 H860"], ["data", "M970,88 H1000"], ["data", "M1050,116 V170"],
+  ["sys", "M860,178 H824"], ["sys", "M860,258 H824"],
+  ["data", "M860,358 H824"], ["data", "M915,410 V386"], ["data", "M1000,358 H970"],
+  ["data", "M1050,300 V330"], ["sys", "M1100,235 H1130 V438 H1100"], ["data", "M1000,438 H970"],
 ];
 
 const DEFAULTS = {
@@ -108,8 +121,28 @@ const META = {
   ddi: { desc: "Digital data interface carrying I/Q samples to and from the FPGA.", fields: [
     { kind: "select", key: "ddiIf", label: "Interface", options: ["LVDS", "CMOS"] },
     { kind: "ro", label: "RX data rate", get: (d) => `${d.rxRate.toFixed(2)} Mb/s` }, { kind: "ro", label: "Bus", get: () => "12-bit I/Q" }] },
-  fpga: { desc: "Zynq-7020 programmable logic running the Tezuka HDL core and AXI DMA.", fields: [
-    { kind: "ro", label: "Device", get: () => "XC7Z020" }, { kind: "ro", label: "Core", get: () => "Tezuka HDL" }, { kind: "ro", label: "PL clock", get: () => "100 MHz" }] },
+  axi: { desc: "AD9361 data-port interface core (LVDS/CMOS), clocking the converter data and exposing the ADC/DAC channels to the fabric.", fields: [
+    { kind: "ro", label: "Core", get: () => "axi_ad9361" }, { kind: "ro", label: "Device", get: () => "XC7Z020" }] },
+  cs12: { desc: "Packs the 12-bit RX samples into the compact cs12 format before they are moved by the ADC DMA.", fields: [
+    { kind: "ro", label: "Format", get: () => "cs12 (12-bit I/Q)" }, { kind: "ro", label: "RX data rate", get: (d) => `${d.rxRate.toFixed(2)} Mb/s` }] },
+  adcdma: { desc: "AXI DMA moving packed RX samples from the fabric into DDR for the processing system.", fields: [
+    { kind: "ro", label: "Buffer", get: (d) => d.rxBufferSize != null ? `${d.rxBufferSize} B` : "—" },
+    { kind: "ro", label: "Transfer", get: (d) => d.rxDmaTransfer != null ? `${d.rxDmaTransfer} B` : "—" }] },
+  iqxo: { desc: "Corrects the I/Q stream for the crystal-oscillator frequency error measured on the reference.", fields: [
+    { kind: "ro", label: "XO correction", get: (d) => d.freqCorrection != null ? `${d.freqCorrection}` : "—" }] },
+  vctcxo: { desc: "Locks the VCTCXO to an external 10 MHz or PPS reference by steering its DAC.", fields: [
+    { kind: "ro", label: "Source", get: (d) => d.clkrefSource || "—" }, { kind: "ro", label: "Lock", get: (d) => d.clkrefLock || "—" }] },
+  sfifo: { desc: "Sample FIFO decoupling the DMA / synthesis output from the real-time DAC data clock.", fields: [
+    { kind: "ro", label: "Role", get: () => "TX sample buffer" }, { kind: "ro", label: "TX underflow", get: (d) => d.txUnderflow ? "yes" : "no" }] },
+  synth: { desc: "GNSS signal synthesis engine producing baseband samples in the fabric from commands issued by the processing system.", fields: [
+    { kind: "ro", label: "Input", get: () => "Command DMA" }, { kind: "ro", label: "Output", get: () => "Sample FIFO" }] },
+  dacdma: { desc: "AXI DMA streaming host IQ samples (libiio) from DDR to the transmit path.", fields: [
+    { kind: "ro", label: "Buffer", get: (d) => d.txBufferSize != null ? `${d.txBufferSize} B` : "—" },
+    { kind: "ro", label: "Transfer", get: (d) => d.txDmaTransfer != null ? `${d.txDmaTransfer} B` : "—" }] },
+  cmddma: { desc: "DMA path delivering synthesis commands from DDR to the GNSS synthesis engine.", fields: [
+    { kind: "ro", label: "Path", get: () => "DDR -> GNSS synth" }] },
+  ps: { desc: "Zynq-7020 ARM processing system running Linux, the IIO stack, MQTT backend and this dashboard.", fields: [
+    { kind: "ro", label: "CPU", get: () => "Dual Cortex-A9" }, { kind: "ro", label: "OS", get: () => "Linux" }] },
 };
 
 function ArchBlock({ id, sel, onClick }) {
@@ -172,8 +205,8 @@ function Architecture({ d }) {
   return (
     <div className="page">
       <div className="grid-12">
-        <Card title="AD9361 RF transceiver" sub="Functional block diagram · click a block to edit" className="span-8">
-          <svg viewBox="0 0 848 500" className="arch-svg">
+        <Card title="AD9361 RF transceiver" sub="Functional block diagram · click a block for details" className="span-8">
+          <svg viewBox="0 0 1160 500" className="arch-svg">
             <defs>
               <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                 <path d="M0,1 L9,5 L0,9 Z" fill="context-stroke" />
@@ -181,7 +214,8 @@ function Architecture({ d }) {
             </defs>
             <rect x="110" y="64" width="580" height="408" rx="14" className="chip" />
             <text x="120" y="56" className="chip-label">AD9361 · 2×2 MIMO</text>
-            <text x="769" y="180" className="chip-label" textAnchor="middle">Zynq-7020</text>
+            <rect x="700" y="40" width="450" height="440" rx="14" className="chip" />
+            <text x="710" y="32" className="chip-label">Zynq-7020 · PL + PS</text>
             {CONN.map(([cls, dpath], i) => (
               <path key={i} d={dpath} className={`conn ${cls}`} markerEnd="url(#arr)" markerStart={cls === "data" ? "url(#arr)" : undefined} />
             ))}
@@ -222,21 +256,4 @@ function Architecture({ d }) {
   );
 }
 
-// ---- Maia SDR (embedded native web UI) -------------------------------------
-// The Maia-SDR waterfall UI (package/maia-wasm) is a separate app served by
-// maia-httpd at /waterfall/ — this page just frames it in an iframe, it
-// doesn't duplicate any of its functionality.
-function MaiaSdr() {
-  return (
-    <div className="page">
-      <div className="grid-12">
-        <Card title="Maia SDR" sub="Native Maia-SDR web UI, served at /waterfall/" className="span-12" pad={false}>
-          <iframe src="/waterfall/" title="Maia SDR" className="maiasdr-frame" />
-        </Card>
-      </div>
-    </div>
-  );
-}
-
 window.Architecture = Architecture;
-window.MaiaSdr = MaiaSdr;

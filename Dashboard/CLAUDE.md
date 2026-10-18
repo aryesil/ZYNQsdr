@@ -23,6 +23,8 @@ python3 -m http.server 8080
 
 `Tezuka Dashboard (standalone).html` is a self-contained single-file export (all JS inlined) for distribution. Edit source files, not the standalone.
 
+GNSS-only variant: only Dashboard, Architecture and the System pages remain (Spectrum, DATV, Maia, radio astronomy, classifier, MIDI, Webtioune, TS analyzer, IQ tape, signal generator, RF test, radio, documentation and the donate link were removed with the matching FPGA blocks). The README below the file map still describes the full-featured dashboard.
+
 ## File map
 
 | File | Role |
@@ -33,10 +35,10 @@ python3 -m http.server 8080
 | `charts.jsx` | Chart/gauge primitives: `Donut`, `BarGauge`, `RadialGauge`, `DialGauge`, `StreamChart`, `Sparkline`, `XYChart` |
 | `paho-mqtt-min.js` | Paho MQTT client (copied from firmware MSD); loaded as a plain `<script>` before the JSX files |
 | `data.jsx` | `useLiveData()` — real MQTT connection + 1 Hz simulation for unmapped fields; shared UI primitives: `Card`, `Pill`, `Toggle`, `Slider`, `Field`, `Select`, `TextInput`, `Checkbox` |
-| `tuner.jsx` | `<FreqTuner>` — SDR++-style per-digit frequency/sample-rate input with mouse wheel, keyboard, and click |
-| `pages1.jsx` | Dashboard overview + RF Parameters page |
-| `pages2.jsx` | DATV Controller, Versions, Analysis, Network pages |
-| `pages3.jsx` | Architecture page (clickable AD9361 block diagram) |
+| `tuner.jsx` | `<FreqTuner>` — per-digit frequency/sample-rate input with mouse wheel, keyboard, and click |
+| `pages1.jsx` | Dashboard overview (GNSS-only firmware variant) |
+| `pages2.jsx` | System pages: Versions, Network, Calibrate, Kalibrate, Diagnostic, Performance, GPIO, Persistent, GPS, Reference Clock, Reboot, Operator |
+| `pages3.jsx` | Architecture page (clickable AD9361 + GNSS PL/PS block diagram) |
 | `app.jsx` | App shell: `<Sidebar>`, `<Topbar>`, routing (hash-based), `<TweaksPanel>` wiring, operator profile |
 | `styles.css` | All CSS — dark theme, CSS custom properties for accent/density |
 

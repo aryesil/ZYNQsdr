@@ -35,17 +35,7 @@ def esbuild(args, src=None):
         result.check_returncode()
     return result.stdout
 
-def build_signals():
-    """Rebuild vendor/signals.bundle.js via esbuild."""
-    bundle = os.path.join(HERE, 'vendor', 'signals.bundle.js')
-    entry  = os.path.join(HERE, 'signals-entry.js')
-    print('[bundle] esbuild signals-entry.js -> vendor/signals.bundle.js...', file=sys.stderr)
-    esbuild([entry, '--bundle', '--minify', '--format=iife',
-             '--global-name=Signals', f'--outfile={bundle}'])
-    print(f'[bundle] signals.bundle.js ({os.path.getsize(bundle)//1024} KB)', file=sys.stderr)
-
 npm_install()
-build_signals()
 
 VENDOR = [
     ('vendor/react.js',     'https://unpkg.com/react@18.3.1/umd/react.production.min.js'),
@@ -63,17 +53,6 @@ SOURCES = [
     ('jsx', 'pages1.jsx'),
     ('jsx', 'pages2.jsx'),
     ('jsx', 'pages3.jsx'),
-    ('jsx', 'pages4.jsx'),
-    ('js',  'vendor/signals.bundle.js'),
-    ('jsx', 'pages5.jsx'),
-    ('jsx', 'radioastro.jsx'),
-    ('jsx', 'classifier.jsx'),
-    ('jsx', 'midi.jsx'),
-    ('js',  'qo100wb.js'),
-    ('jsx', 'webtioune.jsx'),
-    ('js',  'tsanalyzer-core.js'),
-    ('jsx', 'tsanalyzer.jsx'),
-    ('jsx', 'rftest.jsx'),
     ('jsx', 'app.jsx'),
 ]
 
